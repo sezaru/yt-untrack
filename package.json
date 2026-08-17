@@ -1,0 +1,14 @@
+{
+  "name": "yt-untrack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Per-container YouTube history/recommendation blocker for Firefox/Zen.",
+  "scripts": {
+    "lint": "web-ext lint",
+    "start": "web-ext run",
+    "sign": "web-ext sign --channel=unlisted"
+  },
+  "devDependencies": {
+    "web-ext": "^8.3.0"
+  }
+}
