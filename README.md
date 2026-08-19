@@ -19,6 +19,21 @@ YouTube's servers.
 The toolbar badge shows a red dot when the active tab is in an untracked
 container.
 
+### Local resume
+
+Because the cancelled pings also carry YouTube's own resume position (it's
+stored server-side against your account), an untracked video would normally
+restart at 0:00. To restore that, a content script keeps the last playback
+position **locally** — keyed per container + video, in the extension's own
+storage, never sent anywhere. Reopen a video and it silently seeks back to
+where you left off, exactly like native resume.
+
+- Active **only in untracked containers**; tracked containers keep YouTube's
+  native resume and this stays dormant.
+- Finished videos (past ~95%) are forgotten, so they start fresh.
+- An explicit `?t=` in the URL always wins over the saved position.
+- Stored positions are pruned after 90 days.
+
 ## Develop
 
 ```sh

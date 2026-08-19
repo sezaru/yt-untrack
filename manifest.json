@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "yt-untrack",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Per-container YouTube: watch signed-in (premium, no ads) without recording history or influencing recommendations.",
   "browser_specific_settings": {
     "gecko": {
@@ -24,6 +24,13 @@
   "background": {
     "scripts": ["background.js"]
   },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "browser_action": {
     "default_popup": "popup.html",
     "default_title": "yt-untrack",

@@ -27,6 +27,58 @@ browser.webRequest.onBeforeRequest.addListener(
   ["blocking"],
 );
 
+// --- Local resume positions (untracked containers only) ------------------
+// storage.local.positions: { "<cookieStoreId>|<videoId>": { t, updated } }
+
+const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+
+function posKey(cookieStoreId, videoId) {
+  return `${cookieStoreId}|${videoId}`;
+}
+
+async function getPositions() {
+  const {positions = {}} = await browser.storage.local.get("positions");
+  return positions;
+}
+
+function prune(positions, now) {
+  for (const [k, v] of Object.entries(positions)) {
+    if (!v || typeof v.updated !== "number" || now - v.updated > NINETY_DAYS_MS) {
+      delete positions[k];
+    }
+  }
+  return positions;
+}
+
+browser.runtime.onMessage.addListener((msg, sender) => {
+  const storeId = sender.tab && sender.tab.cookieStoreId;
+  if (!storeId || !untracked.has(storeId)) return Promise.resolve(null);
+  const videoId = msg && msg.videoId;
+  if (!videoId) return Promise.resolve(null);
+  const key = posKey(storeId, videoId);
+
+  if (msg.type === "getResume") {
+    return getPositions().then((positions) => {
+      const entry = positions[key];
+      return {t: entry ? entry.t : null};
+    });
+  }
+  if (msg.type === "savePosition") {
+    return getPositions().then((positions) => {
+      positions[key] = {t: msg.t, updated: Date.now()};
+      prune(positions, Date.now());
+      return browser.storage.local.set({positions}).then(() => true);
+    });
+  }
+  if (msg.type === "clearPosition") {
+    return getPositions().then((positions) => {
+      delete positions[key];
+      return browser.storage.local.set({positions}).then(() => true);
+    });
+  }
+  return Promise.resolve(null);
+});
+
 async function updateBadge(tabId) {
   try {
     const tab = await browser.tabs.get(tabId);
