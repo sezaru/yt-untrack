@@ -14,6 +14,7 @@ browser.storage.onChanged.addListener((changes, area) => {
     untracked = new Set(changes.enabledContainers.newValue || []);
     refreshAllBadges();
   }
+  if (area === "local" && changes.settings) loadSettings();
 });
 
 browser.webRequest.onBeforeRequest.addListener(
@@ -27,57 +28,78 @@ browser.webRequest.onBeforeRequest.addListener(
   ["blocking"],
 );
 
-// --- Local resume positions (untracked containers only) ------------------
-// storage.local.positions: { "<cookieStoreId>|<videoId>": { t, updated } }
+// --- Settings ------------------------------------------------------------
+let settings = { ...YtuLib.DEFAULTS };
 
-const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-
-function posKey(cookieStoreId, videoId) {
-  return `${cookieStoreId}|${videoId}`;
+async function loadSettings() {
+  const { settings: s = {} } = await browser.storage.local.get("settings");
+  settings = { ...YtuLib.DEFAULTS, ...s };
 }
 
-async function getPositions() {
-  const {positions = {}} = await browser.storage.local.get("positions");
-  return positions;
-}
-
-function prune(positions, now) {
-  for (const [k, v] of Object.entries(positions)) {
-    if (!v || typeof v.updated !== "number" || now - v.updated > NINETY_DAYS_MS) {
-      delete positions[k];
-    }
+// --- Migration + prune ---------------------------------------------------
+async function migrateAndPrune() {
+  const all = await browser.storage.local.get(null); // full scan: install/prune only
+  const { sets, removeKeys } = YtuLib.migrateLegacy(all.positions);
+  if (Object.keys(sets).length) await browser.storage.local.set(sets);
+  const posOnly = {};
+  for (const [k, v] of Object.entries({ ...all, ...sets })) {
+    if (YtuLib.isPosKey(k)) posOnly[k] = v;
   }
-  return positions;
+  const removedPrune = YtuLib.prune(posOnly, Date.now()); // mutates posOnly copy
+  const toRemove = [...removeKeys, ...removedPrune];
+  if (toRemove.length) await browser.storage.local.remove(toRemove);
+}
+
+// --- Position message handlers ------------------------------------------
+function shouldRestore(storeId) {
+  return untracked.has(storeId) || settings.resumeEverywhere;
 }
 
 browser.runtime.onMessage.addListener((msg, sender) => {
   const storeId = sender.tab && sender.tab.cookieStoreId;
-  if (!storeId || !untracked.has(storeId)) return Promise.resolve(null);
-  const videoId = msg && msg.videoId;
+  if (!storeId || !msg) return Promise.resolve(null);
+
+  if (msg.type === "getBadgeState") {
+    return Promise.resolve({ active: untracked.has(storeId) && settings.watchedBadges });
+  }
+
+  if (msg.type === "lookupPositions") {
+    const ids = Array.isArray(msg.videoIds) ? msg.videoIds : [];
+    const keys = ids.map((v) => YtuLib.posKey(storeId, v));
+    return browser.storage.local.get(keys).then((got) => {
+      const out = {};
+      for (const id of ids) {
+        const e = got[YtuLib.posKey(storeId, id)];
+        if (e) out[id] = { t: e.t, d: e.d };
+      }
+      return out;
+    });
+  }
+
+  const videoId = msg.videoId;
   if (!videoId) return Promise.resolve(null);
-  const key = posKey(storeId, videoId);
+  const key = YtuLib.posKey(storeId, videoId);
 
   if (msg.type === "getResume") {
-    return getPositions().then((positions) => {
-      const entry = positions[key];
-      return {t: entry ? entry.t : null};
+    if (!shouldRestore(storeId)) return Promise.resolve(null);
+    return browser.storage.local.get(key).then((got) => {
+      const e = got[key];
+      return e ? { t: e.t, d: e.d } : null;
     });
   }
   if (msg.type === "savePosition") {
-    return getPositions().then((positions) => {
-      positions[key] = {t: msg.t, updated: Date.now()};
-      prune(positions, Date.now());
-      return browser.storage.local.set({positions}).then(() => true);
-    });
+    // Save in ANY container regardless of toggle, so data exists to resume later.
+    return browser.storage.local
+      .set({ [key]: { t: msg.t, d: msg.d, updated: Date.now() } })
+      .then(() => true);
   }
   if (msg.type === "clearPosition") {
-    return getPositions().then((positions) => {
-      delete positions[key];
-      return browser.storage.local.set({positions}).then(() => true);
-    });
+    return browser.storage.local.remove(key).then(() => true);
   }
   return Promise.resolve(null);
 });
+
+browser.runtime.onInstalled.addListener(migrateAndPrune);
 
 async function updateBadge(tabId) {
   try {
@@ -99,4 +121,4 @@ browser.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status) updateBadge(tabId);
 });
 
-loadEnabled().then(refreshAllBadges);
+Promise.all([loadEnabled(), loadSettings()]).then(refreshAllBadges);

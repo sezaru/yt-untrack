@@ -22,7 +22,7 @@
     "*://*.youtube.com/*"
   ],
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["lib.js", "background.js"]
   },
   "content_scripts": [
     {
