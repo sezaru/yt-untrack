@@ -6,6 +6,16 @@
 
 const SAVE_INTERVAL_MS = 5000;
 
+// Flip on via: browser.storage.local.set({debugResume: true}) in the bg console.
+let DEBUG = false;
+browser.storage.local.get("debugResume").then((r) => (DEBUG = !!r.debugResume));
+browser.storage.onChanged.addListener((c, a) => {
+  if (a === "local" && c.debugResume) DEBUG = !!c.debugResume.newValue;
+});
+function dlog(...args) {
+  if (DEBUG) console.log("[ytu-resume]", `${(performance.now() / 1000).toFixed(2)}s`, ...args);
+}
+
 let currentVideoId = null;
 let activeVideo = null;
 let saveTimer = null;
@@ -81,6 +91,7 @@ function attach() {
   activeVideo = v;
   v.addEventListener("pause", onPause);
   v.addEventListener("ended", onEnded);
+  if (DEBUG) v.addEventListener("seeked", () => dlog("seeked ->", v.currentTime));
   saveTimer = setInterval(positionNow, SAVE_INTERVAL_MS);
 }
 
@@ -91,6 +102,7 @@ const MAX_REAPPLY = 3;
 // window. Always returns true — we keep saving regardless of whether we restored.
 async function restore() {
   const resume = await send("getResume");
+  dlog("getResume", resume);
   if (!resume || typeof resume.t !== "number" || urlHasTimestamp()) return true;
 
   const v = await waitForVideo();
@@ -104,6 +116,7 @@ async function restore() {
   const apply = () => {
     const cur = getVideo();
     if (!cur || currentVideoId !== applyId) return; // navigated away
+    dlog("apply target", target, "was", cur.currentTime);
     if (Math.abs(cur.currentTime - target) > 2) {   // YouTube moved us
       cur.currentTime = target;
     }
