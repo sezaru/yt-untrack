@@ -3,6 +3,10 @@
   const MARK = "data-ytu";
   const PILL_CLASS = "ytu-pill";
   const BAR_CLASS = "ytu-bar";
+  // YouTube's current feed uses lockup view-models whose thumbnail (image) link is
+  // a.ytLockupViewModelContentImage; a#thumbnail is the legacy grid. Match both, and
+  // only the image anchor — never the title link (ytLockupMetadataViewModelTitle).
+  const THUMB_SEL = "a.ytLockupViewModelContentImage[href], a#thumbnail[href]";
   let active = false;
 
   function injectStyles() {
@@ -19,7 +23,7 @@
   }
 
   function thumbAnchors() {
-    return document.querySelectorAll(`a#thumbnail[href]:not([${MARK}])`);
+    return [...document.querySelectorAll(THUMB_SEL)].filter((a) => !a.hasAttribute(MARK));
   }
 
   function decorate(anchor, entry) {
@@ -81,8 +85,9 @@
       if (!YtuLib.isPosKey(key)) continue;
       const parsed = YtuLib.parseKey(key);
       if (!parsed) continue;
-      document.querySelectorAll(`a#thumbnail[${MARK}]`).forEach((a) => {
-        if (YtuLib.videoIdFromHref(a.getAttribute("href")) === parsed.videoId) {
+      document.querySelectorAll(THUMB_SEL).forEach((a) => {
+        if (a.hasAttribute(MARK) &&
+            YtuLib.videoIdFromHref(a.getAttribute("href")) === parsed.videoId) {
           a.removeAttribute(MARK);
           a.querySelectorAll(`.${PILL_CLASS}, .${BAR_CLASS}`).forEach((n) => n.remove());
           touched = true;
