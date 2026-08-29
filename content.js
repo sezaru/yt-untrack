@@ -1,10 +1,10 @@
-// Local resume for untracked containers. Since we cancel YouTube's watchtime
-// pings, the account no longer remembers where you left off. This captures the
-// <video> position and silently seeks back to it on reload. Fully dormant unless
-// the background script confirms this tab's container is untracked.
+// Local resume, everywhere. Since we cancel YouTube's watchtime pings in
+// untracked containers, the account no longer remembers position there — so we
+// always save locally, in every container. Whether to restore on load is the
+// background's call (untracked always, tracked only if resumeEverywhere is on);
+// this script just asks via getResume and applies whatever it's told.
 
 const SAVE_INTERVAL_MS = 5000;
-const FINISH_RATIO = 0.95;
 
 let currentVideoId = null;
 let activeVideo = null;
@@ -48,10 +48,10 @@ function positionNow() {
   const v = getVideo();
   if (!v || !v.duration || !currentVideoId) return;
   const {currentTime, duration} = v;
-  if (Number.isFinite(duration) && currentTime >= duration * FINISH_RATIO) {
+  if (YtuLib.isFinished(currentTime, duration)) {
     send("clearPosition"); // finished → forget it
   } else if (currentTime > 0) {
-    send("savePosition", {t: currentTime});
+    send("savePosition", {t: currentTime, d: duration});
   }
 }
 
@@ -84,21 +84,42 @@ function attach() {
   saveTimer = setInterval(positionNow, SAVE_INTERVAL_MS);
 }
 
-// Returns true if this container is untracked (so we should keep tracking).
+const OVERRIDE_WINDOW_MS = 3000;
+const MAX_REAPPLY = 3;
+
+// Restores our saved position, overriding YouTube's own async resume for a bounded
+// window. Always returns true — we keep saving regardless of whether we restored.
 async function restore() {
   const resume = await send("getResume");
-  if (!resume) return false; // tracked / dormant — do nothing at all
-  if (typeof resume.t === "number" && !urlHasTimestamp()) {
-    const v = await waitForVideo();
-    if (v && v.currentTime < 2) {
-      v.currentTime = resume.t;
-      // YouTube can snap back to 0 just after load; re-apply once.
-      setTimeout(() => {
-        const cur = getVideo();
-        if (cur && cur.currentTime < 2) cur.currentTime = resume.t;
-      }, 1000);
+  if (!resume || typeof resume.t !== "number" || urlHasTimestamp()) return true;
+
+  const v = await waitForVideo();
+  if (!v) return true;
+
+  const target = resume.t;
+  const applyId = currentVideoId;
+  let count = 0;
+  const start = Date.now();
+
+  const apply = () => {
+    const cur = getVideo();
+    if (!cur || currentVideoId !== applyId) return; // navigated away
+    if (Math.abs(cur.currentTime - target) > 2) {   // YouTube moved us
+      cur.currentTime = target;
     }
-  }
+  };
+
+  apply(); // immediate
+  const timer = setInterval(() => {
+    if (count >= MAX_REAPPLY || Date.now() - start > OVERRIDE_WINDOW_MS ||
+        currentVideoId !== applyId) {
+      clearInterval(timer);
+      return;
+    }
+    count++;
+    apply();
+  }, 600);
+
   return true;
 }
 
@@ -106,8 +127,8 @@ async function onNavigate() {
   detach();
   currentVideoId = videoIdFromUrl();
   if (!currentVideoId) return; // not a watch page
-  const untrackedHere = await restore();
-  if (untrackedHere) attach();
+  await restore();
+  attach();
 }
 
 window.addEventListener("yt-navigate-finish", onNavigate);
