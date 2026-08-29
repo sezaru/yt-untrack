@@ -3,3 +3,16 @@ node_modules/
 web-ext-artifacts/
 *.xpi
 .superpowers/
+
+# e2e harness runtime artifacts (profile has a real Google login — never commit)
+e2e/profile*/
+e2e/ext/
+e2e/node_modules/
+e2e/session.txt
+e2e/ffpath.txt
+e2e/*.log
+# throwaway diagnostic probes from the investigation
+e2e/tests/_*.js
+
+# AMO submission build artifact
+yt_untrack-*.zip
