@@ -27,7 +27,7 @@
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/*"],
-      "js": ["content.js"],
+      "js": ["lib.js", "content.js", "badges.js"],
       "run_at": "document_idle"
     }
   ],
