@@ -3,44 +3,53 @@
   <head>
     <meta charset="utf-8" />
     <style>
-      body {
-        font: 13px system-ui, sans-serif;
-        margin: 0;
-        padding: 12px;
-        min-width: 250px;
+      :root{
+        --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#e6e6e6;
+        --accent:#e05555; --sw-off:#c9ccd6;
       }
-      h1 {
-        font-size: 13px;
-        margin: 0 0 6px;
+      @media (prefers-color-scheme: dark){
+        :root{ --bg:#1b1d26; --fg:#e8e8ea; --muted:#9aa; --line:#2a2e3d; --sw-off:#3a3f55; }
       }
-      p {
-        color: #666;
-        margin: 0 0 12px;
-        line-height: 1.4;
-      }
-      label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 5px 0;
-        cursor: pointer;
-      }
-      .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        display: inline-block;
-        flex: none;
-      }
-      .empty {
-        color: #999;
-      }
+      body{font:13px system-ui,sans-serif;margin:0;padding:0;min-width:300px;
+           background:var(--bg);color:var(--fg)}
+      .head{padding:14px 16px 8px;font-weight:700}
+      .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;
+             color:var(--muted);padding:8px 16px 4px}
+      .row{display:flex;align-items:center;gap:10px;padding:8px 16px}
+      .row .grow{flex:1}
+      .row .desc{font-size:11px;color:var(--muted);margin-top:1px}
+      .divider{height:1px;background:var(--line);margin:6px 0}
+      .sw{width:34px;height:20px;border-radius:20px;background:var(--sw-off);
+          position:relative;flex:none;cursor:pointer;transition:.2s}
+      .sw[aria-checked="true"]{background:var(--accent)}
+      .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+                 border-radius:50%;background:#fff;transition:.2s}
+      .sw[aria-checked="true"]::after{left:16px}
+      .dot{width:10px;height:10px;border-radius:50%;flex:none}
+      .cont{cursor:pointer}
+      .empty{color:var(--muted);padding:6px 16px}
     </style>
   </head>
   <body>
-    <h1>Untrack these containers</h1>
-    <p>YouTube history and recommendations won't be recorded for tabs opened in checked containers.</p>
+    <div class="head">yt-untrack</div>
+
+    <div class="label">Global</div>
+    <div class="row">
+      <div class="grow">Resume where I left off
+        <div class="desc">All videos, every container</div></div>
+      <div class="sw" id="sw-resume" role="switch" tabindex="0" aria-checked="true"></div>
+    </div>
+    <div class="row">
+      <div class="grow">Watched badges
+        <div class="desc">Mark private videos in the feed</div></div>
+      <div class="sw" id="sw-badges" role="switch" tabindex="0" aria-checked="true"></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="label">Untrack these containers</div>
     <div id="list"><span class="empty">Loading…</span></div>
+
+    <script src="lib.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
