@@ -17,7 +17,55 @@
     return { store: rest.slice(0, i), videoId: rest.slice(i + 1) };
   }
 
-  const api = { P_PREFIX, posKey, isPosKey, parseKey };
+  const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+  const FINISH_RATIO = 0.95;
+  const DEFAULTS = { resumeEverywhere: true, watchedBadges: true };
+
+  function prune(store, now) {
+    const removed = [];
+    for (const key of Object.keys(store)) {
+      if (!isPosKey(key)) continue;
+      const v = store[key];
+      if (!v || typeof v.updated !== "number" || now - v.updated > NINETY_DAYS_MS) {
+        delete store[key];
+        removed.push(key);
+      }
+    }
+    return removed;
+  }
+
+  function barWidthPct(t, d) {
+    if (!d || !Number.isFinite(d) || d <= 0) return null;
+    const pct = (t / d) * 100;
+    if (pct < 0) return 0;
+    if (pct > 100) return 100;
+    return pct;
+  }
+
+  function isFinished(t, d) {
+    return !!d && Number.isFinite(d) && t >= d * FINISH_RATIO;
+  }
+
+  function videoIdFromHref(href) {
+    if (typeof href !== "string") return null;
+    const q = href.indexOf("?");
+    if (q < 0 || !href.slice(0, q).includes("/watch")) return null;
+    return new URLSearchParams(href.slice(q)).get("v");
+  }
+
+  const api = {
+    P_PREFIX,
+    posKey,
+    isPosKey,
+    parseKey,
+    NINETY_DAYS_MS,
+    FINISH_RATIO,
+    DEFAULTS,
+    prune,
+    barWidthPct,
+    isFinished,
+    videoIdFromHref,
+  };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.YtuLib = api;
