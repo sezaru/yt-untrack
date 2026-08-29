@@ -35,7 +35,7 @@ The existing untracking mechanism (cancel `/api/stats/*` for `enabledContainers`
 
 ## Feature 1 — resume on all videos
 
-**Control:** global toggle **"Resume where I left off"** (default **on**). Applies to every container, not just default.
+**Control:** global toggle **"Resume where I left off"** (default **on**). It governs resume in **tracked** containers only. **Resume in untracked (private) containers is always on, independent of this toggle** — flipping the toggle off never disables the private-container resume that already exists. Saving positions still happens in every container so a later toggle-on has data to resume from.
 
 **Saving** (unchanged triggers, extended to all containers): save `{t, d}` on the periodic interval, on `pause`, on `visibilitychange` (hidden), and on `beforeunload`. Clear the entry when `currentTime >= duration * 0.95` (finished) and on `ended`.
 
@@ -48,7 +48,7 @@ The existing untracking mechanism (cancel `/api/stats/*` for `enabledContainers`
   - After the load window closes, never re-apply — so we never fight the user's own manual seeking.
 - `&t=` in the URL always takes precedence (explicit user intent).
 
-**Interaction with Feature-1-off:** when the toggle is off, no saving and no restoring on tracked containers. Untracked-container resume (today's behavior) can remain tied to untracking OR to this toggle — see Open Questions.
+**Interaction with Feature-1-off:** when the toggle is off, no restoring on **tracked** containers (untracked containers still restore, always). Position **saving continues in all containers regardless of the toggle**, so toggling back on immediately has data to work with.
 
 ## Feature 2 — "watched" badges (private containers only)
 
@@ -93,5 +93,4 @@ Consequences: per-thumbnail check is a bounded async batch read (not a per-node 
 
 ## Open questions (to resolve during planning)
 
-- **Decide (user-visible behavior, not implementer discretion):** should untracked-container resume follow the new global "Resume where I left off" toggle, or stay always-on as today (independent of the toggle)? This changes what happens when the toggle is off in a private container. Leaning: fold it under the toggle for one consistent mental model — confirm before planning.
 - Exact `data-*` attribute name and the thumbnail selector(s) that survive YouTube DOM churn (rich-grid, watch-next sidebar, search results) — pin down during implementation (safe to defer).
