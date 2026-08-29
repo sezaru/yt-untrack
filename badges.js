@@ -26,19 +26,52 @@
     return [...document.querySelectorAll(THUMB_SEL)].filter((a) => !a.hasAttribute(MARK));
   }
 
+  function barBox(anchor) {
+    // The anchor is display:inline, so absolute bottom:0 drifts below the image. Anchor
+    // to the rounded image box instead (falls back to the anchor for the legacy grid).
+    return anchor.querySelector(".ytThumbnailViewModelImage") || anchor;
+  }
+
   function decorate(anchor, entry) {
-    if (getComputedStyle(anchor).position === "static") anchor.style.position = "relative";
+    const box = barBox(anchor);
+    if (getComputedStyle(box).position === "static") box.style.position = "relative";
     const pill = document.createElement("div");
     pill.className = PILL_CLASS;
     pill.textContent = "👁 watched";
-    anchor.appendChild(pill);
+    box.appendChild(pill);
     const w = YtuLib.barWidthPct(entry.t, entry.d);
     if (w !== null) {
       const bar = document.createElement("div");
       bar.className = BAR_CLASS;
       bar.style.width = w + "%";
-      anchor.appendChild(bar);
+      // If YouTube already draws its own resume bar, stack ours directly above it.
+      const ytBar = anchor.querySelector(".ytThumbnailOverlayProgressBarHost");
+      if (ytBar) bar.style.bottom = (ytBar.offsetHeight || 4) + "px";
+      box.appendChild(bar);
     }
+  }
+
+  // Update a thumbnail already decorated, in place — no remove/re-add, so a position that
+  // updates every few seconds (a video playing in another tab) grows the bar without flicker.
+  function updateDecoration(anchor, entry) {
+    if (!entry) { // position cleared / finished — drop the badge
+      anchor.removeAttribute(MARK);
+      anchor.querySelectorAll(`.${PILL_CLASS}, .${BAR_CLASS}`).forEach((n) => n.remove());
+      return;
+    }
+    const w = YtuLib.barWidthPct(entry.t, entry.d);
+    let bar = anchor.querySelector(`.${BAR_CLASS}`);
+    if (w === null) { if (bar) bar.remove(); return; }
+    if (!bar) {
+      const box = barBox(anchor);
+      if (getComputedStyle(box).position === "static") box.style.position = "relative";
+      bar = document.createElement("div");
+      bar.className = BAR_CLASS;
+      const ytBar = anchor.querySelector(".ytThumbnailOverlayProgressBarHost");
+      if (ytBar) bar.style.bottom = (ytBar.offsetHeight || 4) + "px";
+      box.appendChild(bar);
+    }
+    bar.style.width = w + "%";
   }
 
   async function scan() {
@@ -80,21 +113,23 @@
   // clear the mark on the matching thumbnail so the next scan re-decorates it.
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== "local" || !active) return;
-    let touched = false;
     for (const key of Object.keys(changes)) {
       if (!YtuLib.isPosKey(key)) continue;
       const parsed = YtuLib.parseKey(key);
       if (!parsed) continue;
+      const entry = changes[key].newValue;
       document.querySelectorAll(THUMB_SEL).forEach((a) => {
-        if (a.hasAttribute(MARK) &&
-            YtuLib.videoIdFromHref(a.getAttribute("href")) === parsed.videoId) {
+        if (YtuLib.videoIdFromHref(a.getAttribute("href")) !== parsed.videoId) return;
+        if (a.hasAttribute(MARK) && a.querySelector(`.${PILL_CLASS}`)) {
+          updateDecoration(a, entry); // already shown — grow the bar in place, no flicker
+        } else {
+          // not yet decorated — let a scan add it fresh
           a.removeAttribute(MARK);
           a.querySelectorAll(`.${PILL_CLASS}, .${BAR_CLASS}`).forEach((n) => n.remove());
-          touched = true;
+          scheduleScan();
         }
       });
     }
-    if (touched) scheduleScan();
   });
 
   async function init() {
