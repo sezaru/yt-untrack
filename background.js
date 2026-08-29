@@ -51,7 +51,9 @@ async function migrateAndPrune() {
 }
 
 // --- Position message handlers ------------------------------------------
-function shouldRestore(storeId) {
+// Where we record positions: untracked containers always; normal ones only when the
+// "resume everywhere" toggle is on. Restoring is NOT gated by this — see getResume.
+function shouldSave(storeId) {
   return untracked.has(storeId) || settings.resumeEverywhere;
 }
 
@@ -60,17 +62,24 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   if (!storeId || !msg) return Promise.resolve(null);
 
   if (msg.type === "getBadgeState") {
-    return Promise.resolve({ active: untracked.has(storeId) && settings.watchedBadges });
+    // Badges surface "watched via an untracked container" in EVERY container, so the
+    // gate is the setting alone — the lookup below restricts hits to untracked stores.
+    return Promise.resolve({ active: !!settings.watchedBadges });
   }
 
   if (msg.type === "lookupPositions") {
     const ids = Array.isArray(msg.videoIds) ? msg.videoIds : [];
-    const keys = ids.map((v) => YtuLib.posKey(storeId, v));
+    const stores = [...untracked]; // a video "seen via untracked" can live in any of them
+    if (!ids.length || !stores.length) return Promise.resolve({});
+    const keys = [];
+    for (const id of ids) for (const c of stores) keys.push(YtuLib.posKey(c, id));
     return browser.storage.local.get(keys).then((got) => {
       const out = {};
       for (const id of ids) {
-        const e = got[YtuLib.posKey(storeId, id)];
-        if (e) out[id] = { t: e.t, d: e.d };
+        for (const c of stores) {
+          const e = got[YtuLib.posKey(c, id)];
+          if (e) { out[id] = { t: e.t, d: e.d }; break; }
+        }
       }
       return out;
     });
@@ -81,14 +90,21 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   const key = YtuLib.posKey(storeId, videoId);
 
   if (msg.type === "getResume") {
-    if (!shouldRestore(storeId)) return Promise.resolve(null);
-    return browser.storage.local.get(key).then((got) => {
-      const e = got[key];
-      return e ? { t: e.t, d: e.d } : null;
+    // Always restore if we have a position (never gated by the toggle) so our seek wins
+    // over YouTube's. Untracked ("real" private) watches are authoritative — checked first;
+    // fall back to this container's own position when the video was never watched privately.
+    const stores = [...untracked, storeId].filter((c, i, a) => a.indexOf(c) === i);
+    const keys = stores.map((c) => YtuLib.posKey(c, videoId));
+    return browser.storage.local.get(keys).then((got) => {
+      for (const c of stores) {
+        const e = got[YtuLib.posKey(c, videoId)];
+        if (e) return { t: e.t, d: e.d };
+      }
+      return null;
     });
   }
   if (msg.type === "savePosition") {
-    // Save in ANY container regardless of toggle, so data exists to resume later.
+    if (!shouldSave(storeId)) return Promise.resolve(false);
     return browser.storage.local
       .set({ [key]: { t: msg.t, d: msg.d, updated: Date.now() } })
       .then(() => true);
