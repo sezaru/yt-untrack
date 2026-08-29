@@ -28,7 +28,8 @@ Changes:
   - Resume path reads exactly **one** key (`storage.local.get("p:<store>|<vid>")`).
   - Badge path batch-reads only the keys for thumbnails currently visible.
 - **Pruning:** entries older than 90 days are removed. Prune runs off the hot path (on write and/or occasionally), enumerating keys via `storage.local.get(null)` — never during scroll or seek.
-- **Migration:** on upgrade, one-time convert any existing `positions` object into per-video keys, then delete the old blob.
+- **Migration:** on upgrade, one-time convert any existing `positions` object into per-video keys, then delete the old blob. Legacy entries have no `d` (duration was never stored). Migrated entries therefore render **pill only, no progress bar** until `d` is backfilled on the next watch; the badge code must treat `d === undefined` as "unknown length → omit the bar," never as `0`.
+- **Hard rule:** `storage.local.get(null)` (full enumeration) is used **only** by pruning. No hot path (resume seek, scroll/badge) may enumerate all keys.
 
 The existing untracking mechanism (cancel `/api/stats/*` for `enabledContainers`) is unchanged.
 
@@ -66,7 +67,7 @@ The existing untracking mechanism (cancel `/api/stats/*` for `enabledContainers`
 
 Consequences: per-thumbnail check is a bounded async batch read (not a per-node storage hit); DOM writes are coalesced in `requestAnimationFrame`; transient memory is bounded to the current viewport batch. Scroll overhead is negligible.
 
-**Update on watch:** when a position is saved/cleared for a video in the current container, refresh that thumbnail's badge if it is on screen (via the same storage-change path already used to refresh the toolbar badge).
+**Update on watch:** when a position is saved/cleared for a video in the current container, refresh that thumbnail's badge if it is on screen. Note this requires a **new** `storage.onChanged` listener in the content script — today only `background.js` listens for storage changes (to refresh the toolbar badge); the content script has none. This is new code, not reuse of an existing path.
 
 ## Feature 3 — popup redesign (layout A)
 
@@ -92,5 +93,5 @@ Consequences: per-thumbnail check is a bounded async batch read (not a per-node 
 
 ## Open questions (to resolve during planning)
 
-- Should untracked-container resume follow the new global "Resume where I left off" toggle, or stay always-on as today (independent of the toggle)? Leaning: fold it under the toggle for one consistent mental model.
-- Exact `data-*` attribute name and the thumbnail selector(s) that survive YouTube DOM churn (rich-grid, watch-next sidebar, search results) — pin down during implementation.
+- **Decide (user-visible behavior, not implementer discretion):** should untracked-container resume follow the new global "Resume where I left off" toggle, or stay always-on as today (independent of the toggle)? This changes what happens when the toggle is off in a private container. Leaning: fold it under the toggle for one consistent mental model — confirm before planning.
+- Exact `data-*` attribute name and the thumbnail selector(s) that survive YouTube DOM churn (rich-grid, watch-next sidebar, search results) — pin down during implementation (safe to defer).
