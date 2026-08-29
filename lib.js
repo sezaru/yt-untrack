@@ -53,6 +53,22 @@
     return new URLSearchParams(href.slice(q)).get("v");
   }
 
+  function migrateLegacy(legacyPositions) {
+    const sets = {};
+    if (!legacyPositions || typeof legacyPositions !== "object") {
+      return { sets, removeKeys: [] };
+    }
+    const entries = Object.entries(legacyPositions);
+    for (const [oldKey, v] of entries) {
+      const i = oldKey.indexOf("|");
+      if (i < 0 || !v) continue;
+      const store = oldKey.slice(0, i);
+      const videoId = oldKey.slice(i + 1);
+      sets[posKey(store, videoId)] = { t: v.t, d: undefined, updated: v.updated };
+    }
+    return { sets, removeKeys: entries.length ? ["positions"] : [] };
+  }
+
   const api = {
     P_PREFIX,
     posKey,
@@ -65,6 +81,7 @@
     barWidthPct,
     isFinished,
     videoIdFromHref,
+    migrateLegacy,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

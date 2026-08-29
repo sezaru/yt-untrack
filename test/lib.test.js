@@ -58,3 +58,21 @@ test("videoIdFromHref extracts v param, rejects non-watch", () => {
 test("DEFAULTS", () => {
   assert.deepStrictEqual(L.DEFAULTS, { resumeEverywhere: true, watchedBadges: true });
 });
+
+test("migrateLegacy converts old positions blob to per-video keys", () => {
+  const legacy = {
+    "firefox-default|aaa": { t: 12, updated: 111 },
+    "firefox-container-2|bbb": { t: 34, updated: 222 },
+  };
+  const { sets, removeKeys } = L.migrateLegacy(legacy);
+  assert.deepStrictEqual(sets, {
+    "p:firefox-default|aaa": { t: 12, d: undefined, updated: 111 },
+    "p:firefox-container-2|bbb": { t: 34, d: undefined, updated: 222 },
+  });
+  assert.deepStrictEqual(removeKeys, ["positions"]);
+});
+
+test("migrateLegacy on empty/absent blob is a no-op", () => {
+  assert.deepStrictEqual(L.migrateLegacy(undefined), { sets: {}, removeKeys: [] });
+  assert.deepStrictEqual(L.migrateLegacy({}), { sets: {}, removeKeys: [] });
+});
