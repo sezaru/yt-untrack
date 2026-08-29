@@ -60,12 +60,45 @@
     });
   }
 
+  let scanTimer = null;
+  function scheduleScan() {
+    if (!active) return;
+    if (scanTimer) return;
+    scanTimer = setTimeout(() => { scanTimer = null; scan(); }, 200);
+  }
+
+  function startObserver() {
+    const obs = new MutationObserver(scheduleScan);
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Refresh when a position is written for THIS container while we're on a feed:
+  // clear the mark on the matching thumbnail so the next scan re-decorates it.
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !active) return;
+    let touched = false;
+    for (const key of Object.keys(changes)) {
+      if (!YtuLib.isPosKey(key)) continue;
+      const parsed = YtuLib.parseKey(key);
+      if (!parsed) continue;
+      document.querySelectorAll(`a#thumbnail[${MARK}]`).forEach((a) => {
+        if (YtuLib.videoIdFromHref(a.getAttribute("href")) === parsed.videoId) {
+          a.removeAttribute(MARK);
+          a.querySelectorAll(`.${PILL_CLASS}, .${BAR_CLASS}`).forEach((n) => n.remove());
+          touched = true;
+        }
+      });
+    }
+    if (touched) scheduleScan();
+  });
+
   async function init() {
     const state = await browser.runtime.sendMessage({ type: "getBadgeState" }).catch(() => null);
     active = !!(state && state.active);
     if (!active) return;
     injectStyles();
     scan();
+    startObserver();
   }
 
   init();
